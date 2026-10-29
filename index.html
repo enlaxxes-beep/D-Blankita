@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&family=Oswald:wght@500;700&family=Pacifico&display=swap">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
 <title>D’Blankita · Tacos y Gorditas</title>
 <style>
 :root{--wood:#3a2014;--paper:#fbe6bd;--ink:#3b1a0f;--red:#b3141b;--gold:#ffc928;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -119,9 +120,9 @@ input:focus,textarea:focus{outline:0;border-color:#c62012}
 <label for="ref">Referencias</label><input id="ref" placeholder="Casa azul, junto a la tienda…">
 <button class="btn s" id="gps" type="button">📍 Usar mi ubicación actual</button>
 <p class="m" id="gpsm"></p>
-<a class="btn s" href="https://www.google.com/maps" target="_blank" rel="noopener" style="text-align:center;text-decoration:none">🗺️ Abrir mapa y marcar mi casa</a>
-<p class="m">En el mapa, mantén presionado tu casa para poner el pin, toca “Compartir” y copia el enlace. Pégalo aquí:</p>
-<input id="lnk" placeholder="https://maps.app.goo.gl/…">
+<div id="map"></div>
+<p class="m">Toca el mapa para poner el pin en tu casa y arrástralo para ajustarlo.</p>
+<input id="lnk" type="hidden">
 </div>
 <button class="btn" id="send" type="button">Enviar pedido por WhatsApp</button>
 <p class="m" id="err" style="color:#c62012;font-weight:600"></p>
@@ -135,6 +136,7 @@ input:focus,textarea:focus{outline:0;border-color:#c62012}
 <small>Sábados de 6 pm a 11 pm</small>
 </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 // ====== CONFIGURA AQUÍ ======
 var WHATSAPP = "528712818410"; // Número con lada de país (52) + 10 dígitos
@@ -218,16 +220,32 @@ function calc(){
 }
 show();
 document.querySelectorAll('input[name="t"]').forEach(function(r){r.addEventListener("change",function(){
- $("dom").style.display=dom()?"block":"none";calc();
+ $("dom").style.display=dom()?"block":"none";calc();if(dom())setTimeout(function(){if(initMap())map.invalidateSize()},60);
 })});
+var map=null,pin=null;
+function setPin(lat,lng){loc="https://maps.google.com/?q="+lat.toFixed(6)+","+lng.toFixed(6);$("gpsm").textContent="✅ Pin colocado. Arrástralo para ajustarlo.";}
+function place(lat,lng){
+ if(!pin){pin=L.marker([lat,lng],{draggable:true}).addTo(map);pin.on("dragend",function(){var p=pin.getLatLng();setPin(p.lat,p.lng)})}
+ else pin.setLatLng([lat,lng]);
+ setPin(lat,lng);
+}
+function initMap(){
+ if(map)return true;
+ if(!window.L){$("gpsm").textContent="No cargó el mapa. Escribe tu dirección.";return false}
+ map=L.map("map").setView(CENTRO,14);
+ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",{maxZoom:19,attribution:"© OpenStreetMap"}).on("tileerror",function(){if(!window._te){window._te=1;$("gpsm").textContent="El mapa no cargó. Escribe tu dirección o usa el botón de ubicación."}}).addTo(map);
+ map.on("click",function(e){place(e.latlng.lat,e.latlng.lng)});
+ return true;
+}
 $("gps").addEventListener("click",function(){
- var g=$("gpsm"),msg="Tu navegador no permitió la ubicación automática. Usa el mapa de abajo o escribe tu dirección.";
- if(!navigator.geolocation){g.textContent=msg;return}
+ var g=$("gpsm");
+ if(window.isSecureContext===false){g.textContent="La ubicación automática solo funciona si la página está en un sitio https (no abierta como archivo). Toca el mapa para marcar tu casa.";return}
+ if(!navigator.geolocation){g.textContent="Tu navegador no permite ubicación. Toca el mapa para marcar tu casa.";return}
  g.textContent="Buscando tu ubicación…";
- try{navigator.geolocation.getCurrentPosition(function(p){
-  loc="https://maps.google.com/?q="+p.coords.latitude.toFixed(6)+","+p.coords.longitude.toFixed(6);
-  g.textContent="✅ Ubicación guardada. Se enviará con tu pedido.";
- },function(){g.textContent=msg},{enableHighAccuracy:true,timeout:10000})}catch(x){g.textContent=msg}
+ navigator.geolocation.getCurrentPosition(function(p){
+  if(!initMap())return;
+  map.setView([p.coords.latitude,p.coords.longitude],17);place(p.coords.latitude,p.coords.longitude);
+ },function(er){g.textContent=er&&er.code===1?"El permiso de ubicación está bloqueado. Actívalo en el candado de la barra del navegador, o toca el mapa para marcar tu casa.":"No se pudo obtener tu ubicación. Toca el mapa para marcar tu casa.";},{enableHighAccuracy:true,timeout:15000});
 });
 $("send").addEventListener("click",function(){
  var r=items(),er=$("err");er.textContent="";
